@@ -47,6 +47,7 @@ export const get = async <T = unknown>(options: Get): Promise<RequestResult<T>> 
     url,
     headers,
     params,
+    timeout,
     noCache,
     ttl = config.CACHE_TTL,
     originaInfo = false,
@@ -68,7 +69,7 @@ export const get = async <T = unknown>(options: Get): Promise<RequestResult<T>> 
       }
     }
     // 缓存不存在时请求接口
-    const response = await request.get(url, { headers, params, responseType });
+    const response = await request.get(url, { headers, params, responseType, timeout });
     const responseData = response?.data || response;
     // 存储新获取的数据到缓存
     const updateTime = new Date().toISOString();
@@ -85,7 +86,7 @@ export const get = async <T = unknown>(options: Get): Promise<RequestResult<T>> 
 
 // POST
 export const post = async <T = unknown>(options: Post): Promise<RequestResult<T>> => {
-  const { url, headers, body, noCache, ttl = config.CACHE_TTL, originaInfo = false } = options;
+  const { url, headers, body, timeout, noCache, ttl = config.CACHE_TTL, originaInfo = false } = options;
   logger.info(`🌐 [POST] ${url}`);
   try {
     // 检查缓存
@@ -98,7 +99,7 @@ export const post = async <T = unknown>(options: Post): Promise<RequestResult<T>
       }
     }
     // 缓存不存在时请求接口
-    const response = await request.post(url, body, { headers });
+    const response = await request.post(url, body, { headers, timeout });
     const responseData = response?.data || response;
     // 存储新获取的数据到缓存
     const updateTime = new Date().toISOString();

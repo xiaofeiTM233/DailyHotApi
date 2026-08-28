@@ -130,14 +130,18 @@ export const setCache = async (
  */
 export const delCache = async (key: string): Promise<boolean> => {
   let redisSuccess = true;
-  try {
-    await redis.del(key);
-    logger.info(`🗑️ [REDIS] ${key} has been deleted from Redis`);
-  } catch (error) {
-    redisSuccess = false;
-    logger.error(
-      `📦 [Redis] del error: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
+  await ensureRedisConnection();
+  // Redis 不可用时跳过，避免每次删除都等待重试超时
+  if (isRedisAvailable) {
+    try {
+      await redis.del(key);
+      logger.info(`🗑️ [REDIS] ${key} has been deleted from Redis`);
+    } catch (error) {
+      redisSuccess = false;
+      logger.error(
+        `📦 [Redis] del error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
   }
   // 尝试删除 NodeCache
   const nodeCacheSuccess = cache.del(key) > 0;
