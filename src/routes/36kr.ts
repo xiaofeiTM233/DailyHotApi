@@ -1,6 +1,7 @@
 import type { RouterData, ListContext, Options, RouterResType } from "../types.js";
 import { post } from "../utils/getData.js";
 import { getTime } from "../utils/getTime.js";
+import logger from "../utils/logger.js";
 
 const typeMap: Record<string, string> = {
   hot: "人气榜",
@@ -9,8 +10,18 @@ const typeMap: Record<string, string> = {
   collect: "收藏榜",
 };
 
+// 请求字段名与分类的对应关系
+const listFieldMap = {
+  hot: "hotRankList",
+  video: "videoList",
+  comment: "remarkList",
+  collect: "collectList",
+} as const;
+
 export const handleRoute = async (c: ListContext, noCache: boolean) => {
-  const type = c.req.query("type") || "hot";
+  // 未知分类回退到默认，避免请求到不存在的接口
+  const rawType = c.req.query("type") || "hot";
+  const type = rawType in typeMap ? rawType : "hot";
   const listData = await getList({ type }, noCache);
   const routeData: RouterData = {
     name: "36kr",
@@ -50,17 +61,24 @@ interface KrListData {
 }
 
 interface KrResponse {
-  data: KrListData;
+  data?: KrListData;
 }
 
 const getList = async (options: Options, noCache: boolean): Promise<RouterResType> => {
   const { type } = options;
+  const field = listFieldMap[(type as keyof typeof listFieldMap) ?? "hot"] ?? "hotRankList";
   const url = `https://gateway.36kr.com/api/mis/nav/home/nav/rank/${type}`;
   const result = await post<KrResponse>({
     url,
     noCache,
+    // 该网关偶发响应缓慢，放宽超时
+    timeout: 15000,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      "User-Agent":
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
+      Referer: "https://m.36kr.com/",
+      Origin: "https://m.36kr.com",
     },
     body: {
       partner_id: "wap",
@@ -71,14 +89,11 @@ const getList = async (options: Options, noCache: boolean): Promise<RouterResTyp
       timestamp: new Date().getTime(),
     },
   });
-  const listType = {
-    hot: "hotRankList",
-    video: "videoList",
-    comment: "remarkList",
-    collect: "collectList",
-  };
-  const list =
-    result.data.data[(listType as Record<string, keyof typeof result.data.data>)[type || "hot"]];
+  const list = result.data?.data?.[field] ?? [];
+  if (!list.length) {
+    logger.warn(`⚠️ [WARN] 36 氪热榜数据为空（ type=${type} ）`);
+    return { ...result, data: [] };
+  }
   return {
     ...result,
     data: list.map((v) => {
