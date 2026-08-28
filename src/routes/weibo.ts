@@ -1,7 +1,8 @@
 import type { RouterData } from "../types.js";
 import { get } from "../utils/getData.js";
 import { getTime } from "../utils/getTime.js";
-import { config } from "../config";
+import getWeiboCookie from "../utils/getToken/weibo.js";
+import logger from "../utils/logger.js";
 
 export const handleRoute = async (_: undefined, noCache: boolean) => {
   const listData = await getList(noCache);
@@ -30,8 +31,10 @@ interface WeiboResponse {
   };
 }
 
+// 微博接口需要携带 Cookie 中的 SUB 字段，此处自动申请访客 Cookie
 const getList = async (noCache: boolean) => {
   const url = "https://weibo.com/ajax/side/hotSearch";
+  const cookie = await getWeiboCookie(noCache);
 
   const result = await get<WeiboResponse>({
     url,
@@ -41,6 +44,7 @@ const getList = async (noCache: boolean) => {
       Referer: "https://weibo.com/",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      ...(cookie ? { Cookie: cookie } : {}),
     },
   });
 
