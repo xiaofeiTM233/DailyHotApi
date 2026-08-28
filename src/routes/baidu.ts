@@ -1,5 +1,6 @@
 import type { RouterData, ListContext, Options, RouterResType } from "../types.js";
 import { get } from "../utils/getData.js";
+import logger from "../utils/logger.js";
 
 const typeMap: Record<string, string> = {
   realtime: "热搜",
@@ -51,21 +52,41 @@ interface BaiduSData {
   cards?: Array<{ content?: BaiduItem[] }>;
 }
 
+// 从卡片中提取榜单条目，兼容不同 tab 的嵌套结构
+const extractItems = (sData: BaiduSData): BaiduItem[] => {
+  const cards = sData?.data?.cards ?? sData?.cards ?? [];
+  const items: BaiduItem[] = [];
+  const collect = (content?: BaiduItem[]) => {
+    for (const item of content ?? []) {
+      if (Array.isArray(item?.content)) collect(item.content);
+      else items.push(item);
+    }
+  };
+  for (const card of cards) collect(card?.content);
+  return items;
+};
+
 const getList = async (options: Options, noCache: boolean): Promise<RouterResType> => {
   const { type } = options;
   const url = `https://top.baidu.com/board?tab=${type}`;
   const result = await get<string>({
     url,
     noCache,
+    responseType: "text",
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+      Referer: "https://top.baidu.com/board",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9",
     },
   });
   // 正则查找
   const pattern = /<!--s-data:(.*?)-->/s;
-  const matchResult = result.data.match(pattern);
+  const html = typeof result.data === "string" ? result.data : "";
+  const matchResult = html.match(pattern);
   if (!matchResult) {
+    logger.warn(`⚠️ [WARN] 百度热榜未匹配到 s-data，可能被风控拦截（ tab=${type} ）`);
     return {
       ...result,
       data: [],
@@ -73,28 +94,27 @@ const getList = async (options: Options, noCache: boolean): Promise<RouterResTyp
   }
   let jsonObject: BaiduItem[] = [];
   try {
-    const sData: BaiduSData = JSON.parse(matchResult[1]);
-    const cardContent = sData.data?.cards?.[0]?.content ?? sData.cards?.[0]?.content;
-    if (Array.isArray(cardContent)) {
-      if (cardContent.length > 0 && Array.isArray(cardContent[0]?.content)) {
-        jsonObject = cardContent[0].content!;
-      } else {
-        jsonObject = cardContent;
-      }
-    }
-  } catch {
+    jsonObject = extractItems(JSON.parse(matchResult[1]) as BaiduSData);
+  } catch (error) {
+    logger.error(
+      `❌ [ERROR] 百度热榜数据解析失败：${error instanceof Error ? error.message : "未知错误"}`,
+    );
     jsonObject = [];
+  }
+  if (!jsonObject.length) {
+    logger.warn(`⚠️ [WARN] 百度热榜数据为空（ tab=${type} ）`);
   }
   return {
     ...result,
     data: jsonObject.map((v, index: number) => {
       const title = v.word ?? v.title ?? "";
       return {
-        id: v.index ?? index + 1,
+        // 置顶项与首条的 index 同为 0，改用数组下标保证 id 唯一
+        id: index + 1,
         title,
         desc: v.desc ?? "",
         cover: v.img ?? v.imgInfo?.src ?? "",
-        author: v.show?.length ? v.show : "",
+        author: typeof v.show === "string" ? v.show : "",
         timestamp: 0,
         hot: parseInt((v.hotScore ?? v.hotTag ?? "0").toString(), 10) || 0,
         url: `https://www.baidu.com/s?wd=${encodeURIComponent(v.query ?? title)}`,
