@@ -27,6 +27,7 @@
     "!dist/logs/**/*"
   ],
   "scripts": {
+    "prepare": "npm run build",
     "format": "prettier --write .",
     "lint": "eslint .",
     "dev": "cross-env NODE_ENV=development tsx watch --no-cache src/index.ts",
