@@ -52,17 +52,26 @@ interface BaiduSData {
   cards?: Array<{ content?: BaiduItem[] }>;
 }
 
+// 判断是否为有效的榜单条目，用于过滤风控页面或结构变化产生的无效数据
+const isValidItem = (item: BaiduItem): boolean => {
+  const title = item?.word ?? item?.title;
+  return typeof title === "string" && title.trim().length > 0;
+};
+
+// 递归展开卡片内容，仅保留有效条目
+const collectItems = (content: BaiduItem[] | undefined, items: BaiduItem[]): void => {
+  for (const item of content ?? []) {
+    if (!item || typeof item !== "object") continue;
+    if (Array.isArray(item.content)) collectItems(item.content, items);
+    if (isValidItem(item)) items.push(item);
+  }
+};
+
 // 从卡片中提取榜单条目，兼容不同 tab 的嵌套结构
 const extractItems = (sData: BaiduSData): BaiduItem[] => {
   const cards = sData?.data?.cards ?? sData?.cards ?? [];
   const items: BaiduItem[] = [];
-  const collect = (content?: BaiduItem[]) => {
-    for (const item of content ?? []) {
-      if (Array.isArray(item?.content)) collect(item.content);
-      else items.push(item);
-    }
-  };
-  for (const card of cards) collect(card?.content);
+  for (const card of cards) collectItems(card?.content, items);
   return items;
 };
 
@@ -102,7 +111,9 @@ const getList = async (options: Options, noCache: boolean): Promise<RouterResTyp
     jsonObject = [];
   }
   if (!jsonObject.length) {
-    logger.warn(`⚠️ [WARN] 百度热榜数据为空（ tab=${type} ）`);
+    logger.warn(
+      `⚠️ [WARN] 百度热榜未解析到有效条目（ tab=${type} ），可能被风控拦截或页面结构已变化`,
+    );
   }
   return {
     ...result,
@@ -117,7 +128,7 @@ const getList = async (options: Options, noCache: boolean): Promise<RouterResTyp
         author: typeof v.show === "string" ? v.show : "",
         timestamp: 0,
         hot: parseInt((v.hotScore ?? v.hotTag ?? "0").toString(), 10) || 0,
-        url: `https://www.baidu.com/s?wd=${encodeURIComponent(v.query ?? title)}`,
+        url: `https://www.baidu.com/s?wd=${encodeURIComponent(v.query || title)}`,
         mobileUrl: v.rawUrl ?? v.url ?? "",
       };
     }),
