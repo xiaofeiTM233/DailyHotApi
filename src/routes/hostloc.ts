@@ -2,6 +2,7 @@ import type { RouterData, ListContext, Options } from "../types.js";
 import { get } from "../utils/getData.js";
 import { parseRSS } from "../utils/parseRSS.js";
 import { getTime } from "../utils/getTime.js";
+import logger from "../utils/logger.js";
 
 const typeMap: Record<string, string> = {
   hot: "最新热门",
@@ -11,7 +12,9 @@ const typeMap: Record<string, string> = {
 };
 
 export const handleRoute = async (c: ListContext, noCache: boolean) => {
-  const type = c.req.query("type") || "hot";
+  // 未知分类回退到默认
+  const rawType = c.req.query("type") || "hot";
+  const type = rawType in typeMap ? rawType : "hot";
   const listData = await getList({ type }, noCache);
   const routeData: RouterData = {
     name: "hostloc",
@@ -31,17 +34,23 @@ export const handleRoute = async (c: ListContext, noCache: boolean) => {
 };
 
 const getList = async (options: Options, noCache: boolean) => {
-  const { type } = options;
+  const type = String(options.type ?? "hot");
   const url = `https://hostloc.com/forum.php?mod=guide&view=${type}&rss=1`;
   const result = await get<string>({
     url,
     noCache,
+    timeout: 15000,
+    responseType: "text",
     headers: {
-      userAgent:
-        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Referer: "https://hostloc.com/",
     },
   });
   const list = await parseRSS(result.data);
+  if (!list.length) {
+    logger.warn(`⚠️ [WARN] 全球主机交流数据为空（ type=${type} ），可能被风控拦截`);
+  }
   return {
     ...result,
     data: list.map((v, i) => ({

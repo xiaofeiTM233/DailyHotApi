@@ -2,6 +2,7 @@ import type { ListItem, RouterData } from "../types.js";
 import { load } from "cheerio";
 import { get } from "../utils/getData.js";
 import { getTime } from "../utils/getTime.js";
+import logger from "../utils/logger.js";
 
 export const handleRoute = async (_: undefined, noCache: boolean) => {
   const listData = await getList(noCache);
@@ -22,11 +23,23 @@ export const handleRoute = async (_: undefined, noCache: boolean) => {
 
 const getList = async (noCache: boolean) => {
   const url = `https://www.gameres.com`;
-  const result = await get<string>({ url, noCache });
-  const $ = load(result.data);
+  const result = await get<string>({
+    url,
+    noCache,
+    // 页面较大且加载缓慢，放宽超时
+    timeout: 20000,
+    responseType: "text",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Referer: "https://www.gameres.com/",
+    },
+  });
+  const html = typeof result.data === "string" ? result.data : "";
+  const $ = load(html);
 
-  const container = $('div[data-news-pane-id="100000"]');
-  const listDom = container.find("article.feed-item");
+  // 页面已移除 data-news-pane-id 容器，直接选取文章节点
+  const listDom = $("article.feed-item");
 
   const listData = Array.from(listDom).map((el) => {
     const dom = $(el);
@@ -57,6 +70,10 @@ const getList = async (noCache: boolean) => {
       mobileUrl: url,
     } satisfies ListItem;
   });
+
+  if (!listData.length) {
+    logger.warn("⚠️ [WARN] GameRes 游资网未解析到条目，页面结构可能已变化");
+  }
 
   return {
     ...result,

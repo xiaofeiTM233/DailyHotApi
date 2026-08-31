@@ -1,6 +1,7 @@
 import type { RouterData } from "../types.js";
 import { get } from "../utils/getData.js";
 import { genHeaders } from "../utils/getToken/coolapk.js";
+import logger from "../utils/logger.js";
 
 export const handleRoute = async (_: undefined, noCache: boolean) => {
   const listData = await getList(noCache);
@@ -22,10 +23,12 @@ interface CoolapkItem {
   username: string;
   ttitle: string;
   shareUrl: string;
+  // 动态详情路径，如 /feed/73507277
+  url?: string;
 }
 
 interface CoolapkResponse {
-  data: CoolapkItem[];
+  data?: CoolapkItem[];
 }
 
 const getList = async (noCache: boolean) => {
@@ -33,21 +36,33 @@ const getList = async (noCache: boolean) => {
   const result = await get<CoolapkResponse>({
     url,
     noCache,
+    timeout: 15000,
     headers: genHeaders(),
   });
-  const list = result.data.data;
+  const list = result.data?.data ?? [];
+  if (!list.length) {
+    logger.warn("⚠️ [WARN] 酷安热榜数据为空，签名可能已失效或被 WAF 拦截");
+    return { ...result, data: [] };
+  }
   return {
     ...result,
-    data: list.map((v) => ({
-      id: v.id,
-      title: v.message,
-      cover: v.tpic,
-      author: v.username,
-      desc: v.ttitle,
-      timestamp: undefined,
-      hot: undefined,
-      url: v.shareUrl,
-      mobileUrl: v.shareUrl,
-    })),
+    data: list.map((v) => {
+      // 优先使用 shareUrl，缺失时用详情路径或按 id 构造
+      const shareUrl =
+        v.shareUrl ||
+        (v.url ? `https://www.coolapk.com${v.url.startsWith("/") ? v.url : `/${v.url}`}` : "") ||
+        (v.id ? `https://www.coolapk.com/feed/${v.id}` : "");
+      return {
+        id: v.id,
+        title: v.message,
+        cover: v.tpic,
+        author: v.username,
+        desc: v.ttitle,
+        timestamp: undefined,
+        hot: undefined,
+        url: shareUrl,
+        mobileUrl: shareUrl,
+      };
+    }),
   };
 };

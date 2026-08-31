@@ -1,12 +1,14 @@
 import md5 from "md5";
 
+import md5 from "md5";
+import crypto from "crypto";
+
 /**
  * 获取随机的DEVICE_ID
  * @returns DEVICE_ID
  */
 const getRandomDEVICE_ID = () => {
-  const id = [10, 6, 6, 6, 14];
-  return id.map((i) => Math.random().toString(36).substring(2, i)).join("-");
+  return crypto.randomUUID();
 };
 
 /**
@@ -31,6 +33,7 @@ const get_app_token = () => {
 
 /**
  * 获取请求头
+ * ## 需使用安卓客户端的 Dalvik UA，浏览器 UA 会被 WAF 拦截（ 403 ）
  * @returns 请求头
  */
 export const genHeaders = () => {
@@ -44,6 +47,6 @@ export const genHeaders = () => {
     "X-Api-Version": "11",
     "X-App-Code": "2101202",
     "User-Agent":
-      "Mozilla/5.0 (Linux; Android 10; Mi 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.5563.15 Mobile Safari/537.36",
+      "Dalvik/2.1.0 (Linux; U; Android 10; Redmi K30 5G MIUI/V12.0.3.0.QGICMXM) (#Build; Redmi; Redmi K30 5G; QKQ1.191222.002 test-keys; 10) +CoolMarket/11.0-2101202",
   };
 };

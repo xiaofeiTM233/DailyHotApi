@@ -2,6 +2,7 @@ import type { RouterData } from "../types.js";
 import { get } from "../utils/getData.js";
 import { getTime } from "../utils/getTime.js";
 import { parseRSS } from "../utils/parseRSS.js";
+import logger from "../utils/logger.js";
 
 export const handleRoute = async (_: undefined, noCache: boolean) => {
   const listData = await getList(noCache);
@@ -22,14 +23,18 @@ const getList = async (noCache: boolean) => {
   const result = await get<string>({
     url,
     noCache,
+    timeout: 15000,
+    responseType: "text",
     headers: {
       "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     },
   });
 
-  const items = await parseRSS(result.data);
+  const xml = typeof result.data === "string" ? result.data : "";
+  const items = await parseRSS(xml);
   const list = items.map((item, index) => {
     const link = item.link || "";
     return {
@@ -43,6 +48,10 @@ const getList = async (noCache: boolean) => {
       hot: undefined,
     };
   });
+
+  if (!list.length) {
+    logger.warn("⚠️ [WARN] Linux.do 数据为空，可能被风控拦截");
+  }
 
   return {
     ...result,

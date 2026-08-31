@@ -1,6 +1,8 @@
 import type { ListItem, RouterData } from "../types.js";
 import { get } from "../utils/getData.js";
+import { parseRSS } from "../utils/parseRSS.js";
 import { load } from "cheerio";
+import logger from "../utils/logger.js";
 
 export const handleRoute = async (_: undefined, noCache: boolean) => {
   const listData = await getList(noCache);
@@ -17,43 +19,48 @@ export const handleRoute = async (_: undefined, noCache: boolean) => {
 };
 
 const getList = async (noCache: boolean) => {
-  const baseUrl = "https://www.producthunt.com";
+  // 官网页面被 Cloudflare 拦截（ 403 ），改用官方 Atom feed
+  const url = "https://www.producthunt.com/feed";
   const result = await get<string>({
-    url: baseUrl,
+    url,
     noCache,
+    timeout: 15000,
+    responseType: "text",
     headers: {
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "application/atom+xml, application/xml, text/xml, */*",
+      Referer: "https://www.producthunt.com/",
+    },
   });
 
-  try {
-    const $ = load(result.data);
-    const stories: ListItem[] = [];
+  const xml = typeof result.data === "string" ? result.data : "";
+  const items = await parseRSS(xml);
+  const list = items
+    .map((item, index) => {
+      const link = item.link || "";
+      // 提取纯文本正文，剔除 "Discussion | Link" 等 HTML 噪音
+      const html = item.content || item.contentSnippet || "";
+      const desc = load(html).text().trim() || "";
+      return {
+        id: item.guid || link || index,
+        title: item.title || "",
+        desc: desc || undefined,
+        author: item.author,
+        timestamp: item.pubDate ? new Date(item.pubDate).getTime() : undefined,
+        hot: undefined,
+        url: link,
+        mobileUrl: link,
+      } satisfies ListItem;
+    })
+    .filter((v) => v.title && v.url);
 
-    $("[data-test=homepage-section-0] [data-test^=post-item]").each((_, el) => {
-      const a = $(el).find("a").first();
-      const path = a.attr("href");
-      const title = $(el).find("a[data-test^=post-name]").text().trim();
-      const id = $(el).attr("data-test")?.replace("post-item-", "");
-      const vote = $(el).find("[data-test=vote-button]").text().trim();
-
-      if (path && id && title) {
-        stories.push({
-          id,
-          title,
-          hot: parseInt(vote) || undefined,
-          timestamp: undefined,
-          url: `${baseUrl}${path}`,
-          mobileUrl: `${baseUrl}${path}`,
-        });
-      }
-    });
-
-    return {
-      ...result,
-      data: stories,
-    };
-  } catch (error) {
-    throw new Error(`Failed to parse Product Hunt HTML: ${error}`);
+  if (!list.length) {
+    logger.warn("⚠️ [WARN] Product Hunt 数据为空，feed 结构可能已变化");
   }
+
+  return {
+    ...result,
+    data: list,
+  };
 };
