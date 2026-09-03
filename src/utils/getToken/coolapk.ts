@@ -1,6 +1,4 @@
 import md5 from "md5";
-
-import md5 from "md5";
 import crypto from "crypto";
 
 /**
